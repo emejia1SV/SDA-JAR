@@ -82,7 +82,7 @@ public class ConsultarHTTP extends Consultar {
 				}
 			};
 
-			taskInvoke = new Thread(run, "AInvocacionWebService");
+			taskInvoke = new Thread(run, "WSHTTP"+getAgregador().getNombre_agregador()+metodo.getId());
 			taskInvoke.start();
 
 			int m_seconds = 1;

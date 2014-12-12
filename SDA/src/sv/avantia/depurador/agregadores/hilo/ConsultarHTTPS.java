@@ -155,10 +155,9 @@ public class ConsultarHTTPS extends Consultar {
 						response = xmlErrorSDA(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_SIN_SEGURIDAD);
 					}
 				}
-
 			};
 
-			taskInvoke = new Thread(run, "AInvocacionWebService");
+			taskInvoke = new Thread(run, "WSHTTPS"+getAgregador().getNombre_agregador()+metodo.getId());
 			taskInvoke.start();
 
 			int m_seconds = 1;

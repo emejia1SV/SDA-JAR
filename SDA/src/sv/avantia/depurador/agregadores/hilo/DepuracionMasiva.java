@@ -119,7 +119,7 @@ public class DepuracionMasiva {
 			respuestaOut.put(getParaProcesarData().get(0).getAgregador().getNombre_agregador(), getRespuestas());
 			return respuestaOut;
 		} catch (Exception e) {
-			logger.error("No e pudo poner el resultado en el hashmap", e);
+			logger.error("No se pudo poner el resultado en el hashmap", e);
 			return new HashMap<String, List<LogDepuracion>>();
 		}
 		

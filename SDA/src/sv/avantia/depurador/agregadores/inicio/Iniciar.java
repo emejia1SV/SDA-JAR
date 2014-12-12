@@ -49,7 +49,7 @@ public class Iniciar {
 			
 			//gestionar la logica de la depuracion
 			GestionarParametrizacion gestion = new GestionarParametrizacion();
-			gestion.depuracionBajaMasiva(obtenerNumeros(), "MASIVA", false);
+			gestion.depuracionBajaMasiva(null, obtenerNumeros(), "MASIVA", false);
 		} 
 		catch (Exception e) 
 		{

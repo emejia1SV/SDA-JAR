@@ -22,7 +22,7 @@ public class TestSDA {
 			//moviles.add("50257129050");
 			
 			GestionarParametrizacion gestion = new GestionarParametrizacion();
-			System.out.println(gestion.depuracionBajaMasiva(moviles,"Servicio Web", true));
+			System.out.println(gestion.depuracionBajaMasiva(null, moviles,"Servicio Web", true));
 		} finally {
 			System.out.println("tiempo definitivo" + (System.currentTimeMillis() - init));
 		}

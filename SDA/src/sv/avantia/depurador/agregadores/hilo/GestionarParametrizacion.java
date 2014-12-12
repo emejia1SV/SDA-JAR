@@ -29,6 +29,7 @@ import sv.avantia.depurador.agregadores.entidades.LogDepuracion;
 import sv.avantia.depurador.agregadores.entidades.Metodos;
 import sv.avantia.depurador.agregadores.entidades.Pais;
 import sv.avantia.depurador.agregadores.entidades.ParametrosSistema;
+import sv.avantia.depurador.agregadores.entidades.UsuarioSistema;
 import sv.avantia.depurador.agregadores.jdbc.BdEjecucion;
 import sv.avantia.depurador.agregadores.utileria.ErroresSDA;
 import sv.avantia.depurador.agregadores.utileria.Log4jInit;
@@ -66,6 +67,8 @@ public class GestionarParametrizacion {
 	 * */
 	private HashMap<String, String> parametrosData = null;
 	
+	private List<String> numerosErroneos = new ArrayList<String>();
+	
 	/**
 	 * Bandera que nos servira para conocer las veces en que se ha recibido
 	 * respuestas desde la depuracion por numero a traves de hilo de ejecucion
@@ -82,7 +85,7 @@ public class GestionarParametrizacion {
 	 * @author Edwin Mejia - Avantia Consultores
 	 * @param args
 	 */
-	public String depuracionBajaMasiva(List<String> moviles, String tipoDepuracion, boolean obtenerRespuesta) {
+	public String depuracionBajaMasiva(UsuarioSistema usuario, List<String> moviles, String tipoDepuracion, boolean obtenerRespuesta) {
 		List<String> numerosPorPais = new ArrayList<String>();
 		List<ConsultaAgregadorPorHilo> hilosParaEjecutar = new ArrayList<ConsultaAgregadorPorHilo>();
 		
@@ -110,9 +113,16 @@ public class GestionarParametrizacion {
 						//recorremos los numeros obtenidos para su clasificacion por pais
 						for (String string : moviles) 
 						{
-							// para reconocer el pais lo hacemos a través de su codigo de pais 
-							if(string.startsWith(pais.getCodigo()))
-								numerosPorPais.add(string);
+							if(string.length()<=8){
+								//debo colocar una respuesta de error por numero no valido siempre y cuando el numero sea diferente
+								if (!numerosErroneos.contains(string)) {
+									numerosErroneos.add(string);
+								}								
+							}else{
+								// para reconocer el pais lo hacemos a través de su codigo de pais 
+								if(string.startsWith(pais.getCodigo()))
+									numerosPorPais.add(string);
+							}
 						}
 						
 						//si no hay numeros en el pais recorrido no se debe enviar ningun hilo
@@ -135,7 +145,7 @@ public class GestionarParametrizacion {
 										hilo.setMoviles(numerosPorPais);
 										hilo.setAgregador(agregador);
 										hilo.setTipoDepuracion(tipoDepuracion);
-										hilo.setUsuarioSistema(getEjecucion().usuarioMaestro());
+										hilo.setUsuarioSistema((usuario==null?getEjecucion().usuarioMaestro():usuario));
 										hilo.setParametrosData(getParametrosData());
 										
 										hilosParaEjecutar.add(hilo);
@@ -187,7 +197,7 @@ public class GestionarParametrizacion {
 			}
 	        
 			//generamos la respuesta como la tengamos
-			return generar();
+			return generar((usuario==null?getEjecucion().usuarioMaestro():usuario), tipoDepuracion);
 		} 
 		catch (Exception e) 
 		{
@@ -215,7 +225,7 @@ public class GestionarParametrizacion {
 		return this.data;
 	}
 	
-	private String generar() throws ParserConfigurationException, TransformerException 
+	private String generar(UsuarioSistema usuario, String tipoDepuracion) throws ParserConfigurationException, TransformerException 
 	{
 		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 		DocumentBuilder builder = factory.newDocumentBuilder();
@@ -238,9 +248,9 @@ public class GestionarParametrizacion {
 			
 			for (LogDepuracion depuracionX : entry.getValue()) 
 			{
-				Element metodo = (Element) document.createElement(depuracionX.getRespuestaFK().getMetodo().getMetodo().intValue()==1?"listaNegra":depuracionX.getRespuestaFK().getMetodo().getMetodo().intValue()==2?"consulta":depuracionX.getRespuestaFK().getMetodo().getMetodo().intValue()==3?"baja":"Deafult");
+				Element metodo = (Element) document.createElement(depuracionX.getRespuestaFK().getMetodo().getMetodo().intValue()==1?"listaNegra":depuracionX.getRespuestaFK().getMetodo().getMetodo().intValue()==2?"consulta":depuracionX.getRespuestaFK().getMetodo().getMetodo().intValue()==3?"baja":"Default");
 				Element numero = (Element) document.createElement("numero");
-				Element codigoError = (Element) document.createElement("codigoError");
+				Element codigoError = (Element) document.createElement("estado");
 				Element descripcionEstado = (Element) document.createElement("descripcionEstado");
 				
 				depuracion.appendChild(metodo);
@@ -254,6 +264,36 @@ public class GestionarParametrizacion {
 				descripcionEstado.appendChild(document.createTextNode(depuracionX.getDescripcionEstado()));				
 			}
 		}
+		
+		for (String numeroErroneo : numerosErroneos) {
+			//agregare las respuesta de error genericas obtenidas en la obtencion de parametrizacion
+			String estado = "Error";
+			String descripcion = "Numero invalido revisar su longitud y verificar tenga codigo de pais anexado";
+			String agregadorNombre = "Error_Parametrizacion";
+			Element agregador = (Element) document.createElement(agregadorNombre);
+			Element depuracion = (Element) document.createElement("Depuracion");
+			
+			root.appendChild(agregador);
+			agregador.appendChild(depuracion);
+			
+			Element metodo = (Element) document.createElement("Default");
+			Element numero = (Element) document.createElement("numero");
+			Element codigoError = (Element) document.createElement("estado");
+			Element descripcionEstado = (Element) document.createElement("descripcionEstado");
+			
+			depuracion.appendChild(metodo);
+			
+			metodo.appendChild(numero);
+			metodo.appendChild(codigoError);
+			metodo.appendChild(descripcionEstado);
+			
+			numero.appendChild(document.createTextNode(numeroErroneo));
+			codigoError.appendChild(document.createTextNode(estado));
+			descripcionEstado.appendChild(document.createTextNode(descripcion));	
+			
+			guardarRespuesta(usuario, tipoDepuracion, estado, descripcion, numeroErroneo);
+		}
+		
 		document.getDocumentElement().normalize();		
 		return xmlOut(document);		
 	}
@@ -379,6 +419,33 @@ public class GestionarParametrizacion {
 		getParametrosData().put("dateSMT", fechaFormated());
 		getParametrosData().put("nonce", java.util.UUID.randomUUID().toString());
 		
+	}
+	
+	/**
+	 * Metodo que servira para unificar el guardado de respuesta
+	 * 
+	 * @author Edwin Mejia - Avantia Consultores
+	 * @param metodo
+	 * @param respuesta
+	 * @param estado
+	 * @return {@link Void}
+	 * */
+	private void guardarRespuesta(UsuarioSistema usuario, String tipoDepuracion, String estado, String descripcion, String numero){
+		LogDepuracion objGuardar = new LogDepuracion();
+		objGuardar.setNumero(numero);
+		objGuardar.setEstadoTransaccion(estado);
+		objGuardar.setFechaTransaccion(new Date());
+		objGuardar.setIdMetodo(4);
+		objGuardar.setRespuestaFK(null);
+		objGuardar.setEnvio("Revisar el logSDA para verificar el texto exacto de insumo");
+		objGuardar.setRespuesta("");
+		objGuardar.setTipoTransaccion(tipoDepuracion);
+		objGuardar.setUsuarioSistema(usuario);
+		objGuardar.setDescripcionEstado(descripcion);
+		
+		getEjecucion().createData(objGuardar);
+		
+		//getRespuestas().add(objGuardar);
 	}
 	
 	/**

@@ -2,17 +2,22 @@ package sv.avantia.depurador.agregadores.servicio.web;
 
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.apache.log4j.Logger;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
+import sv.avantia.depurador.agregadores.entidades.LogDepuracion;
+import sv.avantia.depurador.agregadores.entidades.UsuarioSistema;
 import sv.avantia.depurador.agregadores.hilo.GestionarParametrizacion;
+import sv.avantia.depurador.agregadores.jdbc.BdEjecucion;
 import sv.avantia.depurador.agregadores.utileria.ErroresSDA;
 
 /**
@@ -27,6 +32,19 @@ public class EjecucionServicioWeb {
 	private List<String> listaMoviles = new ArrayList<String>();
 	private GestionarParametrizacion gestion = new GestionarParametrizacion();
 	private String respuesta;
+	
+	/**
+	 * Instancia de las operaciones con la base de datos.
+	 * 
+	 * */
+	private BdEjecucion ejecucion = new BdEjecucion();
+	
+	/**
+	 * Obtener el appender para la impresión en un archivo de LOG
+	 * 
+	 * @author Edwin Mejia - Avantia Consultores
+	 * */
+	private static Logger logger = Logger.getLogger("avantiaLogger");
 
 	/**
 	 * Metodo que realizara la gestion de la depuracion apuntando al codigo que
@@ -38,9 +56,10 @@ public class EjecucionServicioWeb {
 	 * @return {@link String} en formato XML
 	 * */
 	public String respuestaBajaMasivas(String moviles) {
+		String tipoDepuracion = "Depuracion Servicio Web";
 		try 
 		{
-			leerInsumos(moviles);
+			leerInsumos(moviles, tipoDepuracion);
 		} catch (Exception e) {
 			if (getRespuesta() == null)
 				setRespuesta(getGestion().xmlError(ErroresSDA.ERROR_GENERICO));
@@ -48,7 +67,13 @@ public class EjecucionServicioWeb {
 		}
 		
 		try {
-			return getGestion().depuracionBajaMasiva(getListaMoviles(),	"Servicio Web", true);
+			if (getRespuesta() != null){
+				logger.debug("Respuesta enviada en xml");
+				logger.debug(getRespuesta());
+				return getRespuesta();
+			}
+			
+			return getGestion().depuracionBajaMasiva(null, getListaMoviles(),	tipoDepuracion, true);
 		} finally {
 			setGestion(null);
 		}
@@ -64,9 +89,10 @@ public class EjecucionServicioWeb {
 	 * @return {@link String} en formato XML
 	 * */
 	public String respuestaIngresoListaNegra(String moviles) {
+		String tipoDepuracion = "Alta Servicio Web";
 		try 
 		{
-			leerInsumos(moviles);
+			leerInsumos(moviles, tipoDepuracion);
 		} catch (Exception e) {
 			if (getRespuesta() == null)
 				setRespuesta(getGestion().xmlError(ErroresSDA.ERROR_GENERICO));
@@ -74,8 +100,14 @@ public class EjecucionServicioWeb {
 		}
 		
 		try {
+			if (getRespuesta() != null){
+				logger.debug("Respuesta enviada en xml");
+				logger.debug(getRespuesta());
+				return getRespuesta();
+			}
+			
 			// el nombre 'Alta Servicio Web' de sirve de bandera para realizar el alta
-			return getGestion().depuracionBajaMasiva(getListaMoviles(),	"Alta Servicio Web", true);
+			return getGestion().depuracionBajaMasiva(null, getListaMoviles(),	tipoDepuracion, true);
 		} finally {
 			setGestion(null);
 		}
@@ -90,8 +122,24 @@ public class EjecucionServicioWeb {
 	 *            {@link String} en formato XML
 	 * @return {@link List} de numeros mviles
 	 * */
-	private void leerInsumos(String insumoXML) {
+	private void leerInsumos(String insumoXML, String tipoDepuracion) {
 
+		//impresion de insumo recibido
+		logger.info("insumo recibido: ");
+		logger.info(insumoXML);
+		
+		if(insumoXML.length()>=11){
+			logger.error(ErroresSDA.ERROR_EN_LA_LECTURA_DE_INSUMOS_VERIFICAR_ESTRUCTURA_SOLICTADA_PARA_CONSUMO_SERVICIO_WEB.getDescripcion());
+			
+			guardarRespuesta(getEjecucion().usuarioMaestro(), tipoDepuracion, "Error", ErroresSDA.ERROR_EN_LA_LECTURA_DE_INSUMOS_VERIFICAR_ESTRUCTURA_SOLICTADA_PARA_CONSUMO_SERVICIO_WEB.getDescripcion(), "sin procesar");
+			
+			// si no esta nula es porque si se obtuvo antes
+			if (getRespuesta() == null)
+				setRespuesta(getGestion().xmlError(ErroresSDA.ERROR_EN_LA_LECTURA_DE_INSUMOS_VERIFICAR_ESTRUCTURA_SOLICTADA_PARA_CONSUMO_SERVICIO_WEB));
+			return;
+		}
+		
+		
 		DocumentBuilderFactory builderFactory = DocumentBuilderFactory.newInstance();
 		DocumentBuilder builder;
 		try {
@@ -105,9 +153,11 @@ public class EjecucionServicioWeb {
 				lecturaListaTelefonos(nodeList, "movil");
 			}
 		} catch (Exception e) {
+			logger.error(ErroresSDA.ERROR_EN_LA_LECTURA_DE_INSUMOS_VERIFICAR_ESTRUCTURA_SOLICTADA_PARA_CONSUMO_SERVICIO_WEB.getDescripcion(), e);
+			
 			// si no esta nula es porque si se obtuvo antes
 			if (getRespuesta() == null)
-				setRespuesta(getGestion().xmlError(ErroresSDA.ERROR_GENERICO));
+				setRespuesta(getGestion().xmlError(ErroresSDA.ERROR_EN_LA_LECTURA_DE_INSUMOS_VERIFICAR_ESTRUCTURA_SOLICTADA_PARA_CONSUMO_SERVICIO_WEB));
 		}
 	}
 
@@ -142,6 +192,33 @@ public class EjecucionServicioWeb {
 							nodeNameToReader);
 			}
 		}
+	}
+	
+	/**
+	 * Metodo que servira para unificar el guardado de respuesta
+	 * 
+	 * @author Edwin Mejia - Avantia Consultores
+	 * @param metodo
+	 * @param respuesta
+	 * @param estado
+	 * @return {@link Void}
+	 * */
+	private void guardarRespuesta(UsuarioSistema usuario, String tipoDepuracion, String estado, String descripcion, String numero){
+		LogDepuracion objGuardar = new LogDepuracion();
+		objGuardar.setNumero(numero);
+		objGuardar.setEstadoTransaccion(estado);
+		objGuardar.setFechaTransaccion(new Date());
+		objGuardar.setIdMetodo(4);
+		objGuardar.setRespuestaFK(null);
+		objGuardar.setEnvio("Revisar el logSDA para verificar el texto exacto de insumo");
+		objGuardar.setRespuesta("");
+		objGuardar.setTipoTransaccion(tipoDepuracion);
+		objGuardar.setUsuarioSistema(usuario);
+		objGuardar.setDescripcionEstado(descripcion);
+		
+		getEjecucion().createData(objGuardar);
+		
+		//getRespuestas().add(objGuardar);
 	}
 
 	/**
@@ -188,5 +265,15 @@ public class EjecucionServicioWeb {
 	private void setRespuesta(String respuesta) {
 		this.respuesta = respuesta;
 	}
-
+	
+	/**
+	 * getter
+	 * 
+	 * @author Edwin Mejia - Avantia Consultores
+	 * @return the ejecucion
+	 */
+	private BdEjecucion getEjecucion() 
+	{
+		return ejecucion;
+	}
 }
