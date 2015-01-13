@@ -66,7 +66,11 @@ public class GestionarParametrizacion {
 	 * @author Edwin Mejia - Avantia Consultores
 	 * */
 	private HashMap<String, String> parametrosData = null;
-	
+
+	/**
+	 * Listados de numeros con los que se ha detectado un en la longitud del
+	 * insumo obtenido ya que todos deben de traer codigo de pais
+	 * */
 	private List<String> numerosErroneos = new ArrayList<String>();
 	
 	/**
@@ -85,8 +89,12 @@ public class GestionarParametrizacion {
 	 * @author Edwin Mejia - Avantia Consultores
 	 * @param args
 	 */
-	public String depuracionBajaMasiva(UsuarioSistema usuario, List<String> moviles, String tipoDepuracion, boolean obtenerRespuesta) {
+	public String depuracionBajaMasiva(UsuarioSistema usuario, List<String> moviles, String tipoDepuracion, boolean obtenerRespuesta) 
+	{
+		//lista de numeros obtenidos por el pais que se esta recorriendo en el bucle
 		List<String> numerosPorPais = new ArrayList<String>();
+		
+		//lista de hilos por agregador que se van a ejecutar
 		List<ConsultaAgregadorPorHilo> hilosParaEjecutar = new ArrayList<ConsultaAgregadorPorHilo>();
 		
 		try 
@@ -115,10 +123,13 @@ public class GestionarParametrizacion {
 						{
 							if(string.length()<=8){
 								//debo colocar una respuesta de error por numero no valido siempre y cuando el numero sea diferente
-								if (!numerosErroneos.contains(string)) {
+								if (!numerosErroneos.contains(string)) 
+								{
 									numerosErroneos.add(string);
 								}								
-							}else{
+							}
+							else
+							{
 								// para reconocer el pais lo hacemos a través de su codigo de pais 
 								if(string.startsWith(pais.getCodigo()))
 									numerosPorPais.add(string);
@@ -128,16 +139,17 @@ public class GestionarParametrizacion {
 						//si no hay numeros en el pais recorrido no se debe enviar ningun hilo
 						if (numerosPorPais.size() > 0)
 						{
+							logger.info("Agregadores a depurar por " + pais.getNombre());
+							
 							//recorremos cada aregador para levantar un hilo por agregador por pais
 							for (Agregadores agregador : pais.getAgregadores()) 
 							{
 								//verificamos el estado del agregador que este activo para ser tomado en cuenta en la depuración
 								if(agregador.getEstado().intValue()==1)
 								{
-									//verificammos que por lo menos un agregador este parametrizado con metodos
+									//verificammos que por lo menos tenga metodos parametrizados el agregador
 									if(!agregador.getMetodos().isEmpty())
 									{	
-										logger.info(agregador.getId());
 										logger.info(agregador.getNombre_agregador());
 										
 										// abrir un hilo pr cada agregador parametrizados

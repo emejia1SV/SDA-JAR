@@ -79,6 +79,7 @@ public class ConsultaAgregadorPorHilo implements Callable<HashMap<String, List<L
 			//colocamos nombre al hilo para entender en el log de que agregador estamos hablando
 			if(!Thread.currentThread().getName().equals(getAgregador().getNombre_agregador()) )
 				Thread.currentThread().setName(getAgregador().getNombre_agregador()); 
+			
 			List<DepuracionPorNumero> paraProcesarData = new ArrayList<DepuracionPorNumero>();
 			
 			for (String movil : getMoviles()) 
