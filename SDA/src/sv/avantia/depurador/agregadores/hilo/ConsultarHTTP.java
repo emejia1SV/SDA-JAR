@@ -33,15 +33,36 @@ public class ConsultarHTTP extends Consultar {
 	 * 
 	 * @return The response SOAP Envelope as a String
 	 */
-	public Document invoke(Metodos metodo, long timeOutMillisecond)
+	public Document invoke(Metodos metodo, int timeOutMillisecond, String movil)
 	{
+		try {
+			url = new URL(metodo.getEndPoint());
+			//verificamos si donde esta corriendo tiene acceso o no a la ruta del agregador
+			if (!ping(url.getHost())) {
+				logger.error(getAgregador().getNombre_agregador() + " " + ErroresSDA.EL_SERVIDOR_DONDE_ESTA_EJECUTANDOSE_NO_TIENE_ACCESO_AL_AGREGADOR.getDescripcion()+ " " + metodo.getEndPoint());
+				return xmlErrorSDA(ErroresSDA.EL_SERVIDOR_DONDE_ESTA_EJECUTANDOSE_NO_TIENE_ACCESO_AL_AGREGADOR);
+			}
+		} catch (MalformedURLException e1) {
+			logger.error(getAgregador().getNombre_agregador() + " " + ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO.getDescripcion()+ " " + metodo.getEndPoint());
+			return xmlErrorSDA(ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO);
+		}
+		
+		
+		logger.debug("mensaje en texto");
+		logger.debug(metodo.getInputMessageText());
 		Document docRequest = getdocumentFromString(metodo.getInputMessageText());;
-
+		
 		if(docRequest==null)
 		{
 			logger.error(ErroresSDA.ERROR_PASANDO_DE_CADENA_TEXTO_A_DOCUMENT.getDescripcion());
 			return xmlErrorSDA(ErroresSDA.ERROR_PASANDO_DE_CADENA_TEXTO_A_DOCUMENT);
 		}
+		
+		logger.debug("documento inputtext");//------------------
+		logger.debug(docRequest.getDocumentElement().toString());//------------------
+		
+		logger.debug("timeOutMillisecond " + timeOutMillisecond);//------------------
+		
 		// create the saaj based soap client
 		try 
 		{
@@ -51,17 +72,11 @@ public class ConsultarHTTP extends Consultar {
 			return xmlErrorSDA(ErroresSDA.ERROR_AL_CREAR_SOAP_CLIENT);
 		}
 
+		logger.debug("SoapActionURI: " + metodo.getSoapActionURI());//------------------
 		// set the SOAPAction
 		client.setSOAPAction(metodo.getSoapActionURI());
-
-		// get the url
-		try 
-		{
-			url = new URL(metodo.getEndPoint());
-		} catch (MalformedURLException e) {
-			logger.error(ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO.getDescripcion() + " " + metodo.getEndPoint() + " - " + e.getMessage(), e);
-			return xmlErrorSDA(ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO);
-		}
+		
+		
 		
 		Thread taskInvoke;
 		try 
@@ -82,7 +97,7 @@ public class ConsultarHTTP extends Consultar {
 				}
 			};
 
-			taskInvoke = new Thread(run, "WSHTTP"+getAgregador().getNombre_agregador()+metodo.getId());
+			taskInvoke = new Thread(run, "WSHTTP-"+getAgregador().getNombre_agregador()+movil);
 			taskInvoke.start();
 
 			int m_seconds = 1;

@@ -1,7 +1,9 @@
 package sv.avantia.depurador.agregadores.hilo;
 
+import java.io.ByteArrayInputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
@@ -12,13 +14,19 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import javax.xml.soap.MessageFactory;
+import javax.xml.soap.MimeHeaders;
+import javax.xml.soap.SOAPConnection;
+import javax.xml.soap.SOAPConnectionFactory;
+import javax.xml.soap.SOAPException;
+import javax.xml.soap.SOAPMessage;
 
 import org.w3c.dom.Document;
 
+//import com.cladonia.xml.webservice.soap.SOAPClient;
+
 import sv.avantia.depurador.agregadores.entidades.Metodos;
 import sv.avantia.depurador.agregadores.utileria.ErroresSDA;
-
-import com.cladonia.xml.webservice.soap.SOAPClient;
 
 /**
  * Conexion con servicios web montados en una ruta de seguridad HTTPS
@@ -28,9 +36,9 @@ import com.cladonia.xml.webservice.soap.SOAPClient;
  * */
 public class ConsultarHTTPS extends Consultar {
 
-	private Document 		response 	= null;
-	private SOAPClient 		client 		= null;
-	private URL 			url 		= null;
+	//private Document 		response 	= null;
+	//private SOAPClient 		client 		= null;
+	//private URL 			url 		= null;
 	
 	/**
 	 * Metodo que nos carga un certificado digital
@@ -38,14 +46,11 @@ public class ConsultarHTTPS extends Consultar {
 	 * @author Edwin Mejia - Avantia Consultores
 	 * @return {@link Void}
 	 * */
-	static private void doTrustToCertificates() 
-			throws Exception 
+	static public void doTrustToCertificates() throws Exception 
 	{
-		// Security.addProvider(new com.sun.net.ssl.internal.ssl.Provider());
 		TrustManager[] trustAllCerts = new TrustManager[] 
-				{ 
-				new X509TrustManager() 
-				{
+		{ 
+				new X509TrustManager() {
 					public X509Certificate[] getAcceptedIssuers() 
 					{
 						return null;
@@ -92,100 +97,79 @@ public class ConsultarHTTPS extends Consultar {
 	 * 
 	 * @return The response SOAP Envelope as a String
 	 */
-	public Document invoke(Metodos metodo, long timeOutMillisecond)
+	public Document invoke(Metodos metodo, int timeOutMillisecond, String movil)
 	{
-		try 
-		{
-			// Trust to certificates
-			doTrustToCertificates();
-		} 
-		catch (Exception e) 
-		{
-			logger.error(ErroresSDA.ERROR_AL_VERIFICAR_LOS_CERTIFICADOS_DE_SEGURIDAD.getDescripcion() + " " + e.getMessage(), e);
-			return xmlErrorSDA(ErroresSDA.ERROR_AL_VERIFICAR_LOS_CERTIFICADOS_DE_SEGURIDAD);
-		}
-		
-		Document docRequest = getdocumentFromString(metodo.getInputMessageText());;
+		logger.debug("init https");
+		logger.debug(metodo.getInputMessageText());
 
-		if(docRequest==null)
-		{
-			logger.error(ErroresSDA.ERROR_PASANDO_DE_CADENA_TEXTO_A_DOCUMENT.getDescripcion());
-			return xmlErrorSDA(ErroresSDA.ERROR_PASANDO_DE_CADENA_TEXTO_A_DOCUMENT);
-		}
-		// create the saaj based soap client
-		try 
-		{
-			client = new SOAPClient(docRequest);
-		} 
-		catch (com.cladonia.xml.webservice.soap.SOAPException e) 
-		{
-			logger.error(ErroresSDA.ERROR_AL_CREAR_SOAP_CLIENT.getDescripcion() + " " + e.getMessage(), e);
-			return xmlErrorSDA(ErroresSDA.ERROR_AL_CREAR_SOAP_CLIENT);
-		}
-
-		// set the SOAPAction
-		client.setSOAPAction(metodo.getSoapActionURI());
-
-		// get the url
-		try 
-		{
+		URL url = null;
+		try {
 			url = new URL(metodo.getEndPoint());
-		} 
-		catch (MalformedURLException e) 
-		{
-			logger.error(ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO.getDescripcion() + " " + metodo.getEndPoint() + " - " + e.getMessage(), e);
+			//verificamos si donde esta corriendo tiene acceso o no a la ruta del agregador
+			if (!ping(url.getHost())) {
+				logger.error(getAgregador().getNombre_agregador() + " " + ErroresSDA.EL_SERVIDOR_DONDE_ESTA_EJECUTANDOSE_NO_TIENE_ACCESO_AL_AGREGADOR.getDescripcion()+ " " + metodo.getEndPoint());
+				return xmlErrorSDA(ErroresSDA.EL_SERVIDOR_DONDE_ESTA_EJECUTANDOSE_NO_TIENE_ACCESO_AL_AGREGADOR);
+			}
+		} catch (MalformedURLException e1) {
+			logger.error(getAgregador().getNombre_agregador() + " " + ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO.getDescripcion()+ " " + metodo.getEndPoint());
 			return xmlErrorSDA(ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO);
 		}
 		
-		Thread taskInvoke;
-		try 
-		{
-			Runnable run = new Runnable() 
-			{
-				public void run() 
-				{
-					try 
-					{
-						// Tratar respuesta del servidor
-						response = client.send(url);
-					} 
-					catch (Exception ex)
-					{
-						logger.error(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_SIN_SEGURIDAD.getDescripcion() + " " + url + " " + ex.getMessage(), ex);
-						response = xmlErrorSDA(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_SIN_SEGURIDAD);
-					}
-				}
-			};
+		try {
+			MessageFactory messageFactory = MessageFactory.newInstance();
+			SOAPMessage msg = messageFactory.createMessage(
+					new MimeHeaders(),
+					new ByteArrayInputStream(metodo.getInputMessageText().getBytes(Charset.forName("UTF-8"))));
 
-			taskInvoke = new Thread(run, "WSHTTPS"+getAgregador().getNombre_agregador()+metodo.getId());
-			taskInvoke.start();
+			logger.debug("init https cert");
+			// Trust to certificates
+			doTrustToCertificates();
 
-			int m_seconds = 1;
-			int contSeconds = 0;
-			while (true) 
-			{
-				Thread.sleep(m_seconds * 1000);
-				contSeconds += m_seconds;
-				if (response != null)
-					break;
-				
-				if (contSeconds >= timeOutMillisecond) 
-				{
-					taskInvoke.interrupt();
-					logger.error(ErroresSDA.ERROR_TIMEUP_EXCEPTION);
-					response = xmlErrorSDA(ErroresSDA.ERROR_TIMEUP_EXCEPTION);
-				}
-			}
+			logger.debug("init https msg to send");
+			System.out.println("in");
+			msg.writeTo(System.out);
 			
-			if (taskInvoke.isAlive())
-				taskInvoke.interrupt();
+			logger.debug("init https send" + metodo.getEndPoint());
+			// SOAPMessage rp = conn.call(msg, urlval);
+			SOAPMessage rp = sendMessage(msg, url);
+
+			// View the output
+			logger.debug("Soap response https received... Done");
+			rp.writeTo(System.out);
 			
-			return response;
+			logger.debug("init https return ");
+			return toDocument(rp);
 		} 
 		catch (Exception e) 
 		{
-			logger.error(ErroresSDA.ERROR_AL_CONSULTAR_TIMEUP_EN_EL_METODO_SIN_SEGURIDAD.getDescripcion(), e);
-			return xmlErrorSDA(ErroresSDA.ERROR_AL_CONSULTAR_TIMEUP_EN_EL_METODO_SIN_SEGURIDAD);
+			logger.error(e.getMessage());
+			return xmlErrorSDA(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_CON_SEGURIDAD);
 		}
+	}
+	
+	static public SOAPMessage sendMessage(SOAPMessage message, URL url)
+			throws MalformedURLException, SOAPException 
+	{
+		SOAPMessage result = null;
+		if (message != null) 
+		{
+			SOAPConnectionFactory scf = SOAPConnectionFactory.newInstance();
+			SOAPConnection connection = null;
+			long time = System.currentTimeMillis();
+			try 
+			{
+				connection = scf.createConnection(); // point-to-point connection
+				result = connection.call(message, url);
+			} 
+			finally 
+			{
+				if (connection != null) 
+				{
+					connection.close();
+				}
+			}
+			logger.debug("Respuesta https en " + (System.currentTimeMillis() - time));
+		}
+		return result;
 	}
 }

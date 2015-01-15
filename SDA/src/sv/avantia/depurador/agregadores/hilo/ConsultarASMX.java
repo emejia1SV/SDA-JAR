@@ -1,13 +1,21 @@
 package sv.avantia.depurador.agregadores.hilo;
 
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.MalformedURLException;
+import java.net.URL;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.apache.http.HttpResponse;
+import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.conn.ConnectTimeoutException;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.params.HttpParams;
 import org.w3c.dom.Document;
 
 import sv.avantia.depurador.agregadores.entidades.Metodos;
@@ -19,13 +27,14 @@ import sv.avantia.depurador.agregadores.utileria.ErroresSDA;
  * @author Edwin Mejia - Avantia Consultores
  * @version 1.0
  * */
+@SuppressWarnings("deprecation")
 public class ConsultarASMX extends Consultar {
 
 	private HttpClient 		httpClient 	= null;
 	private HttpPost 		postRequest = null;
 	private HttpResponse 	response 	= null;
 	private StringEntity 	input 		= null;
-	private Document 		salidaError = null;
+	//private Document 		salidaError = null;
 	/**
 	 * Metodo para la invocacion de los servicios ASMX
 	 * 
@@ -33,13 +42,30 @@ public class ConsultarASMX extends Consultar {
 	 * @param operation un bjeto {@link Metodos}
 	 * @return {@link Document}
 	 * */
-	@SuppressWarnings("deprecation")
-	public Document invoke(Metodos metodo, long timeOutMillisecond)  
+	public Document invoke(Metodos metodo, int timeOutMillisecond, String movil)  
 	{	
 		try
 		{	
+			try {
+				URL url = new URL(metodo.getEndPoint());
+				//verificamos si donde esta corriendo tiene acceso o no a la ruta del agregador
+				if (!ping(url.getHost())) {
+					logger.error(getAgregador().getNombre_agregador() + " " + ErroresSDA.EL_SERVIDOR_DONDE_ESTA_EJECUTANDOSE_NO_TIENE_ACCESO_AL_AGREGADOR.getDescripcion()+ " " + metodo.getEndPoint());
+					return xmlErrorSDA(ErroresSDA.EL_SERVIDOR_DONDE_ESTA_EJECUTANDOSE_NO_TIENE_ACCESO_AL_AGREGADOR);
+				}
+				
+				url = null;
+			} catch (MalformedURLException e1) {
+				logger.error(getAgregador().getNombre_agregador() + " " + ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO.getDescripcion()+ " " + metodo.getEndPoint());
+				return xmlErrorSDA(ErroresSDA.ERROR_AL_CREAR_ENDPOINT_CON_EL_INSUMO_OBTENIDO);
+			}
+			
+			// set the connection timeout value to 30 seconds (30000 milliseconds)
+		    final HttpParams httpParams = new BasicHttpParams();
+		    HttpConnectionParams.setConnectionTimeout(httpParams, timeOutMillisecond);
+		    
 			//generamos el cliente
-			httpClient = new org.apache.http.impl.client.DefaultHttpClient();
+			httpClient = new org.apache.http.impl.client.DefaultHttpClient(httpParams);
 			
 			//inyectamos la ubicacion del servico WEB
 			postRequest = new HttpPost(metodo.getEndPoint());
@@ -61,62 +87,8 @@ public class ConsultarASMX extends Consultar {
 			//ingresamos el mensaje a la comunicacion.
 			postRequest.setEntity(input);
 	        
-			Thread taskInvoke;
-			try 
-			{
-				Runnable run = new Runnable() 
-				{
-					public void run() 
-					{
-						try 
-						{
-							//invocamos el metodo web del Servicio
-							response = httpClient.execute(postRequest);
-						} 
-						catch (Exception e) 
-						{
-							logger.error(ErroresSDA.ERROR_AL_LEER_LA_RESPUESTA_OBTENIDA_DEL_METODO_POR_ASMX.getDescripcion() + "" + e.getMessage(), e);
-				        	salidaError = xmlErrorSDA(ErroresSDA.ERROR_AL_LEER_LA_RESPUESTA_OBTENIDA_DEL_METODO_POR_ASMX);
-						}
-					}
-				};
-				taskInvoke = new Thread(run, "ServicioWeb"+metodo.getMetodo());
-				taskInvoke.start();
-
-				if(salidaError != null)
-		        	return salidaError;
-				
-				int m_seconds = 1;
-				int contSeconds = 0;
-				while (true) 
-				{
-					Thread.sleep(m_seconds * 1000);
-					contSeconds += m_seconds;
-					if (response != null) 
-						break;
-					
-					if(salidaError != null)
-			        	break;
-					
-					if (contSeconds >= timeOutMillisecond) 
-					{
-						taskInvoke.interrupt();
-						logger.error(ErroresSDA.ERROR_TIMEUP_EXCEPTION.getDescripcion());
-						salidaError = xmlErrorSDA(ErroresSDA.ERROR_TIMEUP_EXCEPTION);
-						break;
-					}
-				}
-				if (taskInvoke.isAlive()) 
-					taskInvoke.interrupt();				
-			} 
-			catch (Exception e) 
-			{
-				logger.error(ErroresSDA.ERROR_EL_CONSULTAR_TIMEUP_EN_EL_METODO_A_TRAVES_DE_ASMX.getDescripcion(), e);
-				return xmlErrorSDA(ErroresSDA.ERROR_EL_CONSULTAR_TIMEUP_EN_EL_METODO_A_TRAVES_DE_ASMX);
-			}
-			
-	        if(salidaError != null)
-	        	return salidaError;
+			//invocamos el metodo web del Servicio
+			response = httpClient.execute(postRequest);
 			
 	        //lectura de la respuesta obtenida
 	        try 
@@ -137,6 +109,16 @@ public class ConsultarASMX extends Consultar {
 				logger.error(ErroresSDA.ERROR_AL_LEER_LA_RESPUESTA_OBTENIDA_DEL_METODO_POR_ASMX + " " + e.getMessage() , e);
 				return xmlErrorSDA(ErroresSDA.ERROR_AL_LEER_LA_RESPUESTA_OBTENIDA_DEL_METODO_POR_ASMX);
 			}
+	        
+		} catch (ConnectTimeoutException e) {
+			logger.error(ErroresSDA.ERROR_TIMEUP_EXCEPTION + " " + e.getMessage() , e);
+			return xmlErrorSDA(ErroresSDA.ERROR_TIMEUP_EXCEPTION);
+		} catch (ClientProtocolException e) {
+			logger.error(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_A_TRAVES_DE_ASMX+ " " + e.getMessage() , e);
+			return xmlErrorSDA(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_A_TRAVES_DE_ASMX);
+		} catch (IOException e) {
+			logger.error(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_A_TRAVES_DE_ASMX + " " + e.getMessage() , e);
+			return xmlErrorSDA(ErroresSDA.ERROR_AL_INVOCAR_EL_METODO_A_TRAVES_DE_ASMX);
 		}
 		finally
 		{

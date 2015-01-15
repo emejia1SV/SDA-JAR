@@ -2,6 +2,7 @@ package sv.avantia.depurador.agregadores.hilo;
 
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
+import java.net.InetAddress;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -140,6 +141,28 @@ public class Consultar {
 		} catch (Exception e) {
 			logger.error(ErroresSDA.ERROR_PASANDO_SOAPMESSAGE_RESPONSE_A_DOCUMENT.getDescripcion(), e);
 			return xmlErrorSDA(ErroresSDA.ERROR_PASANDO_SOAPMESSAGE_RESPONSE_A_DOCUMENT);
+		}
+	}
+	
+	/**
+	 * Metodo para verificar si se tiene acceso endpoint
+	 * 
+	 * @author Edwin Mejia - Avantia Consultores
+	 * */
+	protected boolean ping(String host){
+		
+		try {
+			InetAddress in = InetAddress.getByName(host);
+			if(in.isReachable(3000)){
+				System.out.println("direccion accesible");
+				return true;
+			}else{
+				System.out.println("direccion no accesible");
+				return false;
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			return false;
 		}
 	}
 

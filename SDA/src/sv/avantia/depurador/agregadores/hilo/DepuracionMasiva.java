@@ -13,8 +13,8 @@ import org.apache.log4j.Logger;
 import sv.avantia.depurador.agregadores.entidades.LogDepuracion;
 import sv.avantia.depurador.agregadores.jdbc.BdEjecucion;
 
-public class DepuracionMasiva {
-
+public class DepuracionMasiva 
+{
 	/**
 	 * La constante que se enviara como estado de la tansaccion fallida
 	 * 
@@ -43,16 +43,9 @@ public class DepuracionMasiva {
 	private BdEjecucion ejecucion = new BdEjecucion();
 	
 	/**
-	 * Bandera que nos servira para conocer las veces en que se ha recibido
-	 * respuestas desde la depuracion por numero a traves de hilo de ejecucion
-	 * 
-	 * @author Edwin Mejia - Avantia Consultores
+	 * Lista de objetos por numeros para procesar
 	 * */
-	private int contadorRespuestasObtendas = 0;
-	
 	private List<DepuracionPorNumero> paraProcesarData;
-	
-	private DepuracionPorNumero depuracionPorNumero;
 	
 	/**
 	 * Seccion de lectura de los numeros de telefono
@@ -65,64 +58,58 @@ public class DepuracionMasiva {
 		// iniciamos el listado de respuestas 
 		setRespuestas(new ArrayList<LogDepuracion>());
 		
-		if(getParaProcesarData().size()<1)
+		// si el listado de objetos a procesar esta vacio solo retornamos vacio
+		if(getParaProcesarData().isEmpty())
 			return new HashMap<String, List<LogDepuracion>>();
 		
-		try {			
+		//iniciamos el tiempo para verificar el procesamiento del pool
+		long init = System.currentTimeMillis();
+		
+		//contador para conocer las ejecuciones realizadas
+		int contadorPorSegundo = 0;
+		
+		//pool de threads para ejecutar seccionado los hilos
+		ExecutorService executor = Executors.newFixedThreadPool(getParaProcesarData().size());
+		
+		HashMap<String, List<LogDepuracion>> respuestaOut = new HashMap<String, List<LogDepuracion>>();
+		try 
+		{	
+			//ejecutamos lo hilos por numero
 			for (DepuracionPorNumero porNumero : getParaProcesarData()) 
-			{	
-	        	//future = executor.submit(porNumero);
-	        	Thread taskInvoke;
-				Runnable run = new Runnable() 
-				{
-					public void run() 
-					{
-						try 
-						{
-							ExecutorService executor = Executors.newSingleThreadExecutor();
-							Future<List<LogDepuracion>> future = executor.submit(depuracionPorNumero);
-							getRespuestas().addAll(future.get());
-							contadorRespuestasObtendas++;
-					        executor.shutdown();
-						} 
-						catch (Exception ex) 
-						{
-							logger.error("Error al obtener el listado de respuestas", ex);
-						}
-					}
-				};
-				
-				depuracionPorNumero = porNumero;
-				taskInvoke = new Thread(run);
-				taskInvoke.start();
-				Thread.sleep(100);
-			}
-	        					
-			//nos quedamos esperando todas las respuestas
-			while(true)
 			{
-				Thread.sleep(500);//para no ejecutar tantas veces la misma preguntadera
-				//hasta que las tengamos todas las respuestas dejamos de esperar
-				if(contadorRespuestasObtendas >= getParaProcesarData().size())
-					break;
+				List<LogDepuracion> data = new ArrayList<LogDepuracion>();
+				contadorPorSegundo++;
+				Future<List<LogDepuracion>> future = executor.submit(porNumero);
+				data = future.get();
+				getRespuestas().addAll(data);
+
+				respuestaOut.put(porNumero.getAgregador().getNombre_agregador(), data);
+				
+				//cada 10 segundos verificamos cuantas peticiones se han procesado
+				if(((System.currentTimeMillis() - init)/1000)>10){
+					logger.info("Se han procesado hasta el momento " + contadorPorSegundo + " de " + getParaProcesarData().size());
+					init = System.currentTimeMillis();
+				}
 			}
+			executor.shutdown();
 		} 
 		catch (Exception e) 
 		{
 			// Tuvimos un error al estar esperando las respuestas obtenidas desde el hilo por numero
 			guardarRespuesta(ESTADO_ERROR, "Se tuvo una excepcion en el momento de estar esperando las respuestas por numero");
+			executor.shutdown();
 		}
 		
-		try {
+		try 
+		{
 			//retornamos las respuestas
-			HashMap<String, List<LogDepuracion>> respuestaOut = new HashMap<String, List<LogDepuracion>>();
-			respuestaOut.put(getParaProcesarData().get(0).getAgregador().getNombre_agregador(), getRespuestas());
 			return respuestaOut;
-		} catch (Exception e) {
+		} 
+		catch (Exception e) 
+		{
 			logger.error("No se pudo poner el resultado en el hashmap", e);
 			return new HashMap<String, List<LogDepuracion>>();
 		}
-		
 	}
 	
 	/**
@@ -134,7 +121,8 @@ public class DepuracionMasiva {
 	 * @param estado
 	 * @return {@link Void}
 	 * */
-	private void guardarRespuesta(String estado, String descripcion){
+	private void guardarRespuesta(String estado, String descripcion)
+	{
 		LogDepuracion objGuardar = new LogDepuracion();
 		objGuardar.setNumero("00000");
 		objGuardar.setEstadoTransaccion(estado);
@@ -155,35 +143,40 @@ public class DepuracionMasiva {
 	/**
 	 * @return the respuestas
 	 */
-	private List<LogDepuracion> getRespuestas() {
+	private List<LogDepuracion> getRespuestas() 
+	{
 		return respuestas;
 	}
 
 	/**
 	 * @param respuestas the respuestas to set
 	 */
-	private void setRespuestas(List<LogDepuracion> respuestas) {
+	private void setRespuestas(List<LogDepuracion> respuestas) 
+	{
 		this.respuestas = respuestas;
 	}
 	
 	/**
 	 * @return the ejecucion
 	 */
-	private BdEjecucion getEjecucion() {
+	private BdEjecucion getEjecucion() 
+	{
 		return ejecucion;
 	}
 
 	/**
 	 * @return the paraProcesarData
 	 */
-	public List<DepuracionPorNumero> getParaProcesarData() {
+	public List<DepuracionPorNumero> getParaProcesarData() 
+	{
 		return paraProcesarData;
 	}
 
 	/**
 	 * @param paraProcesarData the paraProcesarData to set
 	 */
-	public void setParaProcesarData(List<DepuracionPorNumero> paraProcesarData) {
+	public void setParaProcesarData(List<DepuracionPorNumero> paraProcesarData) 
+	{
 		this.paraProcesarData = paraProcesarData;
 	}
 }

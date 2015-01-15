@@ -15,10 +15,10 @@ public class TestSDA {
 		try {
 			List<String> moviles = new ArrayList<String>();
 			//moviles.add("50257128343");
-			moviles.add("50433126502");
+			//moviles.add("50433126502");
 			//moviles.add("50257128545");
 			//moviles.add("50257128747");
-			//moviles.add("50257128848");
+			moviles.add("50257128848");
 			//moviles.add("50257129050");
 			
 			GestionarParametrizacion gestion = new GestionarParametrizacion();

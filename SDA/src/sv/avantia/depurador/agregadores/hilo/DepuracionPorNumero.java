@@ -35,14 +35,8 @@ import sv.avantia.depurador.agregadores.entidades.UsuarioSistema;
 import sv.avantia.depurador.agregadores.jdbc.BdEjecucion;
 import sv.avantia.depurador.agregadores.utileria.ErroresSDA;
 
-public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
-
-	@Override
-	public List<LogDepuracion> call() throws Exception {
-		invocacionPorNumero();
-		return getRespuestas();
-	}
-
+public class DepuracionPorNumero implements Callable<List<LogDepuracion>> 
+{
 	/**
 	 * La constante que se enviara como estado de la tansaccion fallida
 	 * 
@@ -126,7 +120,7 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 	 * 
 	 * @author Edwin Mejia - Avantia Consultores
 	 * */
-	private long timeOutMillisecond=5000;
+	private int timeOutMillisecond=5000;
 	
 	/**
 	 * Instancia de la Clase {@link BdEjecucion} que maneja los tipos de
@@ -172,6 +166,13 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 	 * @author Edwin Mejia - Avantia Consultores
 	 * */
 	private UsuarioSistema usuarioSistema = null;
+
+	//metodo en el que iniciamos con el hilo
+	@Override
+	public List<LogDepuracion> call() throws Exception {
+		invocacionPorNumero();
+		return getRespuestas();
+	}
 	
 	/**
 	 * Ejecucines de depuraciones por numero de telefonia movil
@@ -187,9 +188,10 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 			Thread.currentThread().setName(getAgregador().getNombre_agregador() + "_" + getParametrosData().get("movil")); 
 		
 		//llenar los parametros para los metodos web.
-		try {
+		try 
+		{
 			//trato especial porque debemos convertirlo a long desde el string obtenido
-			setTimeOutMillisecond(new Long(getParametrosData().get("timeOutWebServices")));
+			setTimeOutMillisecond(new Integer(getParametrosData().get("timeOutWebServices")));
 			
 		} catch (Exception e) {
 			logger.error(ErroresSDA.ERROR_AL_LLENAR_LOS_PARAMETROS_DE_COMUNICACION_CON_LOS_AGREGADORES.getDescripcion(), e);
@@ -250,10 +252,6 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 	{
 		if(nonce!=null && timestamp !=null && pass != null)
 		{
-			logger.debug("generando la contraseña para el SMT");
-			logger.debug(nonce);
-			logger.debug(timestamp);
-			logger.debug(pass);
 			String concatenacion = nonce.concat(timestamp).concat(pass);
 			MessageDigest md = MessageDigest.getInstance("SHA-1");
 			md.update(concatenacion.getBytes());
@@ -278,7 +276,8 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 		Document doc = invocarMetodoWeb(metodo);
 		
 		// dificilmente se pudiera dar pero por si se escapo algo se dejo esta validacion
-		if(doc==null){
+		if(doc==null)
+		{
 			logger.error(ErroresSDA.ERROR_NULLPOINTEREXCEPTION.getDescripcion() +  " No se obtuvo data en la respuesta recibida...", new Exception("verificar porque no se recibio nada de data despues de haber invocado al metodo web"));
 			guardarRespuesta(metodo, doc, ESTADO_ERROR, ErroresSDA.ERROR_NULLPOINTEREXCEPTION.getDescripcion(), metodo.getRespuestas().iterator().next());
 			return;
@@ -295,7 +294,8 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 		}
 		
 		// dificilmente se pudiera dar pero por si se escapo algo se dejo esta validacion
-		if(doc.getDocumentElement()==null){
+		if(doc.getDocumentElement()==null)
+		{
 			logger.error(ErroresSDA.ERROR_NULLPOINTEREXCEPTION +  " No se obtuvo data en la respuesta recibida...", new Exception("verificar porque no se recibio nada de data despues de haber invocado al metodo web"));
 			guardarRespuesta(metodo, doc, ESTADO_ERROR, ErroresSDA.ERROR_NULLPOINTEREXCEPTION.getDescripcion(), metodo.getRespuestas().iterator().next());
 			return;
@@ -305,7 +305,8 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 		doc.getDocumentElement().normalize();
 
 		//verificamos si obtuvimos algún error al invocar el metodo, conociendo ya la estructura en la que devolvera un error
-		if(doc.getDocumentElement().getFirstChild().getNodeName().equals("errorSDA")){
+		if(doc.getDocumentElement().getFirstChild().getNodeName().equals("errorSDA"))
+		{
 			logger.error(getStringFromDocument(doc));
 			guardarRespuesta(metodo, doc, ESTADO_ERROR, doc.getDocumentElement().getFirstChild().getLastChild().getTextContent(), metodo.getRespuestas().iterator().next());
 			return;
@@ -468,7 +469,7 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 		{
 			ConsultarASMX stub = new ConsultarASMX();
 			stub.setAgregador(getAgregador());
-			return stub.invoke(metodo, getTimeOutMillisecond());
+			return stub.invoke(metodo, getTimeOutMillisecond() , getParametrosData().get("movil"));
 		}
 		
 		// si NO es asmx y si tiene seguridad SI es por https
@@ -476,14 +477,14 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 		{
 			ConsultarHTTPS stub = new ConsultarHTTPS();
 			stub.setAgregador(getAgregador());
-			return stub.invoke(metodo, getTimeOutMillisecond());
+			return stub.invoke(metodo, getTimeOutMillisecond(), getParametrosData().get("movil"));
 		}
 		else 
 		{
 			// si NO es asmx y no tiene NO es por https
-			ConsultarHTTP stub = new ConsultarHTTP();
+			ConsultarASMX stub = new ConsultarASMX();
 			stub.setAgregador(getAgregador());
-			return stub.invoke(metodo, getTimeOutMillisecond());
+			return stub.invoke(metodo, getTimeOutMillisecond() , getParametrosData().get("movil"));
 		}
 	}
 
@@ -496,7 +497,8 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 	 * @param estado
 	 * @return {@link Void}
 	 * */
-	private void guardarRespuesta(Metodos metodo, Document respuesta, String estado, String descripcion, Respuesta respuestaObj){
+	private void guardarRespuesta(Metodos metodo, Document respuesta, String estado, String descripcion, Respuesta respuestaObj)
+	{
 		LogDepuracion objGuardar = new LogDepuracion();
 		objGuardar.setNumero((getParametrosData()==null?"No se pudo obtener":getParametrosData().get("movil")));
 		objGuardar.setEstadoTransaccion(estado);
@@ -841,14 +843,14 @@ public class DepuracionPorNumero implements Callable<List<LogDepuracion>> {
 	/**
 	 * @return the timeOutMillisecond
 	 */
-	private long getTimeOutMillisecond() {
+	private int getTimeOutMillisecond() {
 		return timeOutMillisecond;
 	}
 
 	/**
 	 * @param timeOutMillisecond the timeOutMillisecond to set
 	 */
-	private void setTimeOutMillisecond(long timeOutMillisecond) {
+	private void setTimeOutMillisecond(int timeOutMillisecond) {
 		this.timeOutMillisecond = timeOutMillisecond;
 	}
 

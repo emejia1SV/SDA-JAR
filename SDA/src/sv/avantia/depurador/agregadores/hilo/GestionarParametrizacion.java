@@ -10,9 +10,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -25,6 +22,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 import sv.avantia.depurador.agregadores.entidades.Agregadores;
+import sv.avantia.depurador.agregadores.entidades.Clientes_Tel;
 import sv.avantia.depurador.agregadores.entidades.LogDepuracion;
 import sv.avantia.depurador.agregadores.entidades.Metodos;
 import sv.avantia.depurador.agregadores.entidades.Pais;
@@ -34,8 +32,14 @@ import sv.avantia.depurador.agregadores.jdbc.BdEjecucion;
 import sv.avantia.depurador.agregadores.utileria.ErroresSDA;
 import sv.avantia.depurador.agregadores.utileria.Log4jInit;
 
-public class GestionarParametrizacion {
+public class GestionarParametrizacion 
+{
 
+	/**
+	 * Para poder actualizar las depuraciones al procesar un numero
+	 * */
+	private List<Clientes_Tel> clientesTelsUpdate = new ArrayList<Clientes_Tel>();
+	
 	/**
 	 * Iniciar la configuracion para los apender del LOG4J
 	 * 
@@ -68,20 +72,10 @@ public class GestionarParametrizacion {
 	private HashMap<String, String> parametrosData = null;
 
 	/**
-	 * Listados de numeros con los que se ha detectado un en la longitud del
-	 * insumo obtenido ya que todos deben de traer codigo de pais
+	 * Lista de numeros que al ser obtenidos del insumo no cumplian con la
+	 * longitud requerida
 	 * */
 	private List<String> numerosErroneos = new ArrayList<String>();
-	
-	/**
-	 * Bandera que nos servira para conocer las veces en que se ha recibido
-	 * respuestas desde la depuracion por numero a traves de hilo de ejecucion
-	 * 
-	 * @author Edwin Mejia - Avantia Consultores
-	 * */
-	private int contadorRespuestasObtendas = 0;
-	
-	private ConsultaAgregadorPorHilo agregadorPorHilo;
 	
 	/**
 	 * Metodo que inicializara todo el flujo del JAR ejecutable
@@ -91,11 +85,7 @@ public class GestionarParametrizacion {
 	 */
 	public String depuracionBajaMasiva(UsuarioSistema usuario, List<String> moviles, String tipoDepuracion, boolean obtenerRespuesta) 
 	{
-		//lista de numeros obtenidos por el pais que se esta recorriendo en el bucle
 		List<String> numerosPorPais = new ArrayList<String>();
-		
-		//lista de hilos por agregador que se van a ejecutar
-		List<ConsultaAgregadorPorHilo> hilosParaEjecutar = new ArrayList<ConsultaAgregadorPorHilo>();
 		
 		try 
 		{			
@@ -105,7 +95,6 @@ public class GestionarParametrizacion {
 			//llenar los parametros iniciales
 			llenarParametros();
 			
-			logger.info("Obtener Parametrización");
 			// consultar la parametrización
 			for (Pais pais : obtenerParmetrizacion()) 
 			{
@@ -121,7 +110,8 @@ public class GestionarParametrizacion {
 						//recorremos los numeros obtenidos para su clasificacion por pais
 						for (String string : moviles) 
 						{
-							if(string.length()<=8){
+							if(string.length()<=8)
+							{
 								//debo colocar una respuesta de error por numero no valido siempre y cuando el numero sea diferente
 								if (!numerosErroneos.contains(string)) 
 								{
@@ -130,91 +120,89 @@ public class GestionarParametrizacion {
 							}
 							else
 							{
-								// para reconocer el pais lo hacemos a través de su codigo de pais 
+								// través del codigo se reconoce el pais en el que se ejecutara
 								if(string.startsWith(pais.getCodigo()))
 									numerosPorPais.add(string);
 							}
 						}
 						
 						//si no hay numeros en el pais recorrido no se debe enviar ningun hilo
-						if (numerosPorPais.size() > 0)
+						if (!numerosPorPais.isEmpty())
 						{
-							logger.info("Agregadores a depurar por " + pais.getNombre());
-							
-							//recorremos cada aregador para levantar un hilo por agregador por pais
-							for (Agregadores agregador : pais.getAgregadores()) 
+							for (String movil : numerosPorPais) 
 							{
-								//verificamos el estado del agregador que este activo para ser tomado en cuenta en la depuración
-								if(agregador.getEstado().intValue()==1)
+								DepuracionMasiva depuracion 				= new DepuracionMasiva();
+								List<DepuracionPorNumero> paraProcesarData 	= new ArrayList<DepuracionPorNumero>();
+								HashMap<String, String> param 				= new HashMap<String, String>();
+								param.putAll(getParametrosData());
+								
+								//colocamos el numero en una lista en memoria para que este listo por cualquier exepcion
+								param.put("movil", movil);
+								
+								//recorremos cada aregador para levantar un hilo por agregador por pais
+								for (Agregadores agregador : pais.getAgregadores()) 
 								{
-									//verificammos que por lo menos tenga metodos parametrizados el agregador
-									if(!agregador.getMetodos().isEmpty())
-									{	
-										logger.info(agregador.getNombre_agregador());
-										
-										// abrir un hilo pr cada agregador parametrizados
-										ConsultaAgregadorPorHilo hilo = new ConsultaAgregadorPorHilo();
-										hilo.setMoviles(numerosPorPais);
-										hilo.setAgregador(agregador);
-										hilo.setTipoDepuracion(tipoDepuracion);
-										hilo.setUsuarioSistema((usuario==null?getEjecucion().usuarioMaestro():usuario));
-										hilo.setParametrosData(getParametrosData());
-										
-										hilosParaEjecutar.add(hilo);
+									//solo agregadores con estado activo
+									if(agregador.getEstado().intValue()==1)
+									{
+										//que tenga metodos parametrizados
+										if(!agregador.getMetodos().isEmpty())
+										{
+											logger.info("Se depurarán los números con el agregador " + agregador.getNombre_agregador());
+											
+											//hacemos las depuraciones por cada número obtenido
+											DepuracionPorNumero porNumero = new DepuracionPorNumero();
+											porNumero.setAgregador(agregador);
+											porNumero.setParametrosData(param);
+											porNumero.setTipoDepuracion(tipoDepuracion);
+											porNumero.setUsuarioSistema((usuario==null?getEjecucion().usuarioMaestro():usuario));
+
+											//se extraen los metodos esperados 
+											//ya que llevan un orden de ejecucion y solo se esperan tres tipos de metodos 
+											//a su ves por se hilo de ejecucion se saca copia del mensaje original 
+											//para que no haya confusion a la hora de ejecutar el metodo
+											for (Metodos metodoX : agregador.getMetodos()) 
+											{
+												if(metodoX.getMetodo()==1){
+													porNumero.setMsgListaOriginal(metodoX.getInputMessageText());
+													porNumero.setListaNegra(metodoX);
+												}
+												if(metodoX.getMetodo()==2){
+													porNumero.setMsgConsultaOriginal(metodoX.getInputMessageText());
+													porNumero.setConsulta(metodoX);
+												}
+												if(metodoX.getMetodo()==3){
+													porNumero.setMsgBajaOriginal(metodoX.getInputMessageText());
+													porNumero.setBaja(metodoX);
+												}
+											}
+											paraProcesarData.add(porNumero);
+										}
 									}
 								}
-							}
+								//seccion que se debe ejecutar por numero con todos los agregadores parametrizados en el pais
+								System.out.println(paraProcesarData.size());
+								depuracion.setParaProcesarData(paraProcesarData);
+								guardarRespuestaEnContenedor(depuracion.procesarDepuracion());
+								
+								//actualizar la tabla de cliente_tel
+								actualizarTelefonosProcesados(getClientesTelsUpdate(), movil);
+								logger.info("verificar la actualizacion en la base de datos");
+								
+								depuracion = null;
+								paraProcesarData = null;
+							}							
 						}
 					}
 				}				
 			}	
 
-			for (ConsultaAgregadorPorHilo consultaAgregadorPorHilo : hilosParaEjecutar)  
-			{	
-	        	//future = executor.submit(porNumero);
-	        	Thread taskInvoke;
-				Runnable run = new Runnable() 
-				{
-					public void run() 
-					{
-						try 
-						{
-							ExecutorService executor = Executors.newSingleThreadExecutor();
-							Future<HashMap<String, List<LogDepuracion>>> future = executor.submit(agregadorPorHilo);
-							guardarRespuestaEnContenedor(future.get());
-							contadorRespuestasObtendas++;
-					        executor.shutdown();
-						} 
-						catch (Exception ex) 
-						{
-							logger.error("Error al obtener el listado de respuestas", ex);
-						}
-					}
-				};
-				
-				agregadorPorHilo = consultaAgregadorPorHilo;
-				taskInvoke = new Thread(run);
-				taskInvoke.start();
-				Thread.sleep(100);
-			}
-			
-	        
-			//nos quedamos esperando todas las respuestas
-			while(true)
-			{
-				Thread.sleep(500);//para no ejecutar tantas veces la misma preguntadera
-				//hasta que las tengamos todas las respuestas dejamos de esperar
-				if(contadorRespuestasObtendas >= hilosParaEjecutar.size())
-					break;
-			}
-	        
 			//generamos la respuesta como la tengamos
 			return generar((usuario==null?getEjecucion().usuarioMaestro():usuario), tipoDepuracion);
 		} 
 		catch (Exception e) 
 		{
 			logger.error("Error en el sistema de depuracion masiva automatico ", e);
-			e.printStackTrace();
 			return xmlError(ErroresSDA.ERROR_GENERICO);
 		}
 		finally
@@ -277,7 +265,8 @@ public class GestionarParametrizacion {
 			}
 		}
 		
-		for (String numeroErroneo : numerosErroneos) {
+		for (String numeroErroneo : numerosErroneos) 
+		{
 			//agregare las respuesta de error genericas obtenidas en la obtencion de parametrizacion
 			String estado = "Error";
 			String descripcion = "Numero invalido revisar su longitud y verificar tenga codigo de pais anexado";
@@ -372,6 +361,26 @@ public class GestionarParametrizacion {
 	{
 		return (List<Pais>)(List<?>) getEjecucion().listData("FROM SDA_PAISES WHERE STATUS = 1");
 	}
+	
+	/**
+	 * Metodo que esta actualizando la tabla de los numeros de telefonos de los
+	 * clientes donde se le debe de cambiar el estado y se le debe agregar la
+	 * fecha actual
+	 * 
+	 * @author Edwin Mejia - Avantia Consultores
+	 * @return {@link Void}
+	 * */
+	private void actualizarTelefonosProcesados(	List<Clientes_Tel> clientes_Tels, String movil) 
+	{
+		for (Clientes_Tel clientes_Tel : clientes_Tels) {
+			if(movil.equals(clientes_Tel.getNumero()))
+			{
+				clientes_Tel.setEstado(1);
+				clientes_Tel.setFechaProceso(new Date());
+				getEjecucion().updateData(clientes_Tel);
+			}
+		}
+	}
 
 	/**
 	 * getter
@@ -442,7 +451,8 @@ public class GestionarParametrizacion {
 	 * @param estado
 	 * @return {@link Void}
 	 * */
-	private void guardarRespuesta(UsuarioSistema usuario, String tipoDepuracion, String estado, String descripcion, String numero){
+	private void guardarRespuesta(UsuarioSistema usuario, String tipoDepuracion, String estado, String descripcion, String numero)
+	{
 		LogDepuracion objGuardar = new LogDepuracion();
 		objGuardar.setNumero(numero);
 		objGuardar.setEstadoTransaccion(estado);
@@ -466,7 +476,8 @@ public class GestionarParametrizacion {
 	 * @author Edwin Mejia - Avantia Consultores
 	 * @return {@link String}
 	 * */
-	private String fechaFormated(){
+	private String fechaFormated()
+	{
     	SimpleDateFormat dateT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
     	return dateT.format(Calendar.getInstance().getTime());
     }
@@ -474,14 +485,30 @@ public class GestionarParametrizacion {
 	/**
 	 * @return the parametrosData
 	 */
-	private HashMap<String, String> getParametrosData() {
+	private HashMap<String, String> getParametrosData() 
+	{
 		return parametrosData;
 	}
 
 	/**
 	 * @param parametrosData the parametrosData to set
 	 */
-	private void setParametrosData(HashMap<String, String> parametrosData) {
+	private void setParametrosData(HashMap<String, String> parametrosData) 
+	{
 		this.parametrosData = parametrosData;
+	}
+
+	/**
+	 * @return the clientesTelsUpdate
+	 */
+	private List<Clientes_Tel> getClientesTelsUpdate() {
+		return clientesTelsUpdate;
+	}
+
+	/**
+	 * @param clientesTelsUpdate the clientesTelsUpdate to set
+	 */
+	public void setClientesTelsUpdate(List<Clientes_Tel> clientesTelsUpdate) {
+		this.clientesTelsUpdate = clientesTelsUpdate;
 	}
 }

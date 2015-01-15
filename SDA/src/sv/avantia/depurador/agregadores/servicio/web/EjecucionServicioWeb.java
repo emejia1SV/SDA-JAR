@@ -128,7 +128,7 @@ public class EjecucionServicioWeb {
 		logger.info("insumo recibido: ");
 		logger.info(insumoXML);
 		
-		if(insumoXML.length()>=11){
+		if(insumoXML.length()<=11){
 			logger.error(ErroresSDA.ERROR_EN_LA_LECTURA_DE_INSUMOS_VERIFICAR_ESTRUCTURA_SOLICTADA_PARA_CONSUMO_SERVICIO_WEB.getDescripcion());
 			
 			guardarRespuesta(getEjecucion().usuarioMaestro(), tipoDepuracion, "Error", ErroresSDA.ERROR_EN_LA_LECTURA_DE_INSUMOS_VERIFICAR_ESTRUCTURA_SOLICTADA_PARA_CONSUMO_SERVICIO_WEB.getDescripcion(), "sin procesar");
